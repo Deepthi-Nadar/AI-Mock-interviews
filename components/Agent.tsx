@@ -36,6 +36,13 @@ const Agent = ({
   const [lastMessage, setLastMessage] = useState<string>("");
 
   useEffect(() => {
+    console.log(
+      "Loaded Workflow ID:",
+      process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID
+    );
+  }, []);
+
+  useEffect(() => {
     const onCallStart = () => {
       setCallStatus(CallStatus.ACTIVE);
     };
@@ -117,26 +124,62 @@ const Agent = ({
   const handleCall = async () => {
     setCallStatus(CallStatus.CONNECTING);
 
-    if (type === "generate") {
-      await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID!, {
-        variableValues: {
-          username: userName,
-          userid: userId,
-        },
-      });
-    } else {
-      let formattedQuestions = "";
-      if (questions) {
-        formattedQuestions = questions
-          .map((question) => `- ${question}`)
-          .join("\n");
-      }
+    // Debug: log all relevant values before starting the call
+    console.log(">>> Debug: attempting to start VAPI call");
+    console.log("Workflow ID:", process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID);
+    console.log("Web Token:", process.env.NEXT_PUBLIC_VAPI_WEB_TOKEN);
+    console.log("Interviewer (from constants):", interviewer);
+    console.log("type:", type, "userName:", userName, "userId:", userId);
 
-      await vapi.start(interviewer, {
-        variableValues: {
-          questions: formattedQuestions,
-        },
-      });
+    let formattedQuestions = "";
+    if (questions) {
+      formattedQuestions = questions.map((q) => `- ${q}`).join("\n");
+    }
+    console.log("formattedQuestions:", formattedQuestions);
+
+    try {
+      let result;
+
+      if (type === "generate") {
+        if (!process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID) {
+          throw new Error(
+            "Missing NEXT_PUBLIC_VAPI_WORKFLOW_ID environment variable"
+          );
+        }
+
+        result = await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID, {
+          variableValues: { username: userName!, userid: userId! },
+        });
+        console.log("vapi.start (workflow) result:", result);
+      } else {
+        if (!interviewer) {
+          throw new Error("Interviewer constant is missing or invalid");
+        }
+        if (!formattedQuestions) {
+          throw new Error("No questions provided");
+        }
+
+        // Create a copy of interviewer and replace {{questions}} with actual questions
+        const customInterviewer = {
+          ...interviewer,
+          systemMessage: interviewer.systemMessage!.replace(
+            "{{questions}}",
+            formattedQuestions
+          ),
+        };
+
+        result = await vapi.start(customInterviewer as any);
+        console.log("vapi.start (interviewer) result:", result);
+      }
+    } catch (err) {
+      console.error("Error starting call:", err);
+      // Try to stringify error for more info if possible
+      try {
+        console.error("Error details:", JSON.stringify(err, null, 2));
+      } catch {
+        // ignore stringify errors
+      }
+      setCallStatus(CallStatus.INACTIVE);
     }
   };
 

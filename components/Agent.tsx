@@ -131,6 +131,8 @@ const Agent = ({
     console.log("Interviewer (from constants):", interviewer);
     console.log("type:", type, "userName:", userName, "userId:", userId);
 
+    console.log("Questions received in Agent:", questions);
+
     let formattedQuestions = "";
     if (questions) {
       formattedQuestions = questions.map((q) => `- ${q}`).join("\n");
@@ -140,18 +142,8 @@ const Agent = ({
     try {
       let result;
 
-      if (type === "generate") {
-        if (!process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID) {
-          throw new Error(
-            "Missing NEXT_PUBLIC_VAPI_WORKFLOW_ID environment variable"
-          );
-        }
-
-        result = await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID, {
-          variableValues: { username: userName!, userid: userId! },
-        });
-        console.log("vapi.start (workflow) result:", result);
-      } else {
+      if (questions && questions.length > 0) {
+        // Manual interview with provided questions
         if (!interviewer) {
           throw new Error("Interviewer constant is missing or invalid");
         }
@@ -168,8 +160,38 @@ const Agent = ({
           ),
         };
 
-        result = await vapi.start(customInterviewer as any);
-        console.log("vapi.start (interviewer) result:", result);
+        console.log(
+          "customInterviewer object:",
+          JSON.stringify(customInterviewer, null, 2)
+        );
+
+        try {
+          result = await vapi.start(customInterviewer as any);
+          console.log("vapi.start (interviewer) result:", result);
+        } catch (startError) {
+          console.error(
+            "Error in vapi.start with custom interviewer:",
+            startError
+          );
+          throw startError;
+        }
+      } else {
+        // Generated interview using workflow
+        if (!process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID) {
+          throw new Error(
+            "Missing NEXT_PUBLIC_VAPI_WORKFLOW_ID environment variable"
+          );
+        }
+
+        try {
+          result = await vapi.start(process.env.NEXT_PUBLIC_VAPI_WORKFLOW_ID, {
+            variableValues: { username: userName!, userid: userId! },
+          });
+          console.log("vapi.start (workflow) result:", result);
+        } catch (startError) {
+          console.error("Error in vapi.start with workflow ID:", startError);
+          throw startError;
+        }
       }
     } catch (err) {
       console.error("Error starting call:", err);
